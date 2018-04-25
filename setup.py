@@ -2,14 +2,13 @@ from setuptools import setup
 
 setup(
     name='fancypipes',
-    version='0.1dev',
+    version='0.1.2dev',
     description='Making scikit-learn pipelines even more useful',
     url='https://github.com/ieaves/better-pipelines',
     author='Ian Eaves',
     author_email='ian.k.eaves@gmail.com',
     packages=['fancypipes'],
     license='MIT',
-    long_description=open('README.txt').read(),
     install_requires=[
           'sklearn', 'pandas', 'numpy', 'scipy',
     ],

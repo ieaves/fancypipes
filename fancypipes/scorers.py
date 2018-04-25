@@ -15,7 +15,9 @@ def calculate_aic(y, y_pred, k):
     return aic
 
 
-def _regression_scores(y, y_pred, n_predictors=None):
+def _regression_scores(model, X, y):
+    y_pred = model.predict(X)
+    n_predictors = len(X.columns)
     record_count = len(y)
 
     mae = metrics.mean_absolute_error(y, y_pred)
@@ -37,7 +39,13 @@ def _regression_scores(y, y_pred, n_predictors=None):
     return(results)
 
 
-def _classifier_scores(y, y_pred, y_pred_proba):
+def _classifier_scores(model, X, y):
+    y_pred = model.predict(X)
+
+    index = model.classes_.tolist().index(True)
+    y_pred_proba = [prediction[index] for prediction in model.predict_proba(X)]
+    # TODO Only handles binary classification
+
     record_count = len(y)
 
     accuracy = metrics.accuracy_score(y, y_pred)

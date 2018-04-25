@@ -69,6 +69,10 @@ def _get_included_column_names(X, ignores):
                 if not any(all(ignore_attr in col for ignore_attr in ignore) for ignore in ignores)]
 
 
+def _group_applier(grp, model, y, *args, **kwargs):
+    return model.evaluate_performance(grp, y[grp.index], *args, **kwargs)
+
+
 class pipeline(pipeline.Pipeline):
     def __init__(self, steps, ignore_columns=[], diagnostic_package=None):
 
@@ -131,16 +135,14 @@ class pipeline(pipeline.Pipeline):
             X_temp = step[-1].transform(X_temp)
         return(X_temp)
 
-    def evaluate_performance(self, X, y, *args, **kwargs):
-        y_pred = self.predict(X)
-        if _is_regressor(self.pipeline_type):
-            n_predictors = len(self.get_model_coefficients())
-            return self.diagnostic_package(y, y_pred, n_predictors, *args, **kwargs)
-        elif _is_classifier(self.pipeline_type):
-            index = self.classes_.tolist().index(True)
-            y_pred_proba = [prediction[index] for prediction in self.predict_proba(X)]
-            return self.diagnostic_package(y, y_pred, y_pred_proba, *args, **kwargs)
-            # TODO This only works for binary classification atm. Extend to multi-class
+    def evaluate_performance(self, X, y, by=[], *args, **kwargs):
+        if by:
+            by = by if isinstance(by, list) else [by]
+            extra_column = 'level_{}'.format(str(len(by)))
+            ret = X.reset_index(drop=True).groupby(by).apply(_group_applier, self, y, *args, **kwargs)
+            return ret.reset_index().drop(columns=extra_column, axis=1)
+        else:
+            return self.diagnostic_package(self, X, y, *args, **kwargs)
 
     def fit(self, X, y, inplace=True):
         _check_pipeline_is_prepped(self)
@@ -155,7 +157,7 @@ class pipeline(pipeline.Pipeline):
         X = self._get_X(X, inplace=True)
         return super().predict_proba(X)
 
-    def evaluate_k_folds(self, X, y, k=5, random_state=42, shuffle=True):
+    def evaluate_k_folds(self, X, y, k=5, by=[], random_state=42, shuffle=True):
         kf = KFold(k, shuffle, random_state)
         diagnostics_list = []
         for fold, indices in enumerate(kf.split(X)):
@@ -165,20 +167,20 @@ class pipeline(pipeline.Pipeline):
             y_train, y_test = y[train_index], y[test_index]
 
             self.fit(X_train, y_train)
-            results = self.evaluate_performance(X_test, y_test)
+            results = self.evaluate_performance(X_test, y_test, by=by)
             results['fold'] = fold + 1
             diagnostics_list.append(results)
 
-        res = pd.concat(diagnostics_list)
+        result = pd.concat(diagnostics_list)
+        if by:
+            res2 = result.groupby(by).mean().reset_index()
+            res2['fold'] = 'mean'
+            result = pd.concat([res2, result])
 
-        diagnostic_elements = res.index.names
-        if diagnostic_elements[0] is not None:
-            res2 = res.groupby(diagnostic_elements).mean()
-        else:
-            res2 = pd.DataFrame(res.mean()).T
-        res2['fold'] = 'mean'
-        result = pd.concat([res2, res]).reset_index().drop(columns=['index'])
-        return result
+        result.reset_index(drop=True, inplace=True)
+        cols = result.columns.values.tolist()
+        cols = cols[-1:] + cols[:-1]
+        return result[cols]
 
     def get_model_coefficients(self):
         if hasattr(self.steps[-1][1], 'densify'):
@@ -190,6 +192,6 @@ class pipeline(pipeline.Pipeline):
             feature_vals = self.steps[-1][1].feature_importances_
 
         ret = dict(zip(self.final_column_names, feature_vals))
-        ret = {k: v[0] if isinstance(v, collections.Iterable) and len(v)==1 else v for k, v in ret.items()}
+        ret = {k: v[0] if isinstance(v, collections.Iterable) and len(v) == 1 else v for k, v in ret.items()}
 
         return ret
