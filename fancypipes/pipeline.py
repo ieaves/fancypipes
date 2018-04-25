@@ -137,10 +137,11 @@ class pipeline(pipeline.Pipeline):
 
     def evaluate_performance(self, X, y, by=[], *args, **kwargs):
         if by:
-            by = by if isinstance(by, list) else [by]
-            extra_column = 'level_{}'.format(str(len(by)))
-            ret = X.reset_index(drop=True).groupby(by).apply(_group_applier, self, y, *args, **kwargs)
+            groupby_length = len(by) if isinstance(by, list) else 1
+            extra_column = 'level_{}'.format(str(groupby_length))
+            ret = X.groupby(by).apply(_group_applier, self, y, *args, **kwargs)
             return ret.reset_index().drop(columns=extra_column, axis=1)
+            # TODO Why is the groupby returning these extra levels?
         else:
             return self.diagnostic_package(self, X, y, *args, **kwargs)
 
@@ -165,6 +166,10 @@ class pipeline(pipeline.Pipeline):
 
             X_train, X_test = X.iloc[train_index, :], X.iloc[test_index, :]
             y_train, y_test = y[train_index], y[test_index]
+
+            # dropping index so the indices of X and y align
+            X_train.reset_index(drop=True, inplace=True)
+            X_test.reset_index(drop=True, inplace=True)
 
             self.fit(X_train, y_train)
             results = self.evaluate_performance(X_test, y_test, by=by)
